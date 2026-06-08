@@ -1,12 +1,12 @@
 import React, { useState } from "react";
 import { observer } from "mobx-react-lite";
-// import { useNavigate } from 'react-router-dom';
 // import store from '../store/store';
 import Header from "../components/Header";
 import Modal from "../components/Modal";
+import { useNavigate } from "react-router-dom";
 
 const AllCategories: React.FC = () => {
-  //   const navigate = useNavigate();
+  const navigate = useNavigate();
   const [selectedClient, setSelectedClient] = useState("");
   const [selectedDocs, setSelectedDocs] = useState<string[]>([]);
   const [error, setError] = useState("");
@@ -56,6 +56,25 @@ const AllCategories: React.FC = () => {
       <Modal />
 
       <div className="max-w-5xl mx-auto px-4 py-8">
+        <div
+          onClick={() => navigate("/")}
+          className="text-xl mb-2 cursor-pointer flex items-center"
+        >
+          <svg
+            className="w-6 h-6 rotate-180"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2.5}
+              d="M9 5l7 7-7 7"
+            />
+          </svg>
+          Назад
+        </div>
         <div className="bg-white rounded-2xl shadow-md p-8">
           <h1 className="text-3xl font-bold text-gray-800 mb-6">
             Категории документов
