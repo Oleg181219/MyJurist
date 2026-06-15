@@ -1,6 +1,5 @@
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import { observer } from "mobx-react-lite";
-// import store from '../store/store';
 import Header from "../components/Header";
 import Modal from "../components/Modal";
 import { useNavigate } from "react-router-dom";
@@ -11,9 +10,30 @@ const AllCategories: React.FC = () => {
   const [selectedDocs, setSelectedDocs] = useState<string[]>([]);
   const [error, setError] = useState("");
 
+  // Состояния для кастомного выпадающего списка
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [visibleCount, setVisibleCount] = useState(10);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
   const clients = [
     { id: 1, name: "Иванов Иван Иванович" },
     { id: 2, name: "Петров Петр Петрович" },
+    { id: 3, name: "Сидоров Сидор Сидорович" },
+    { id: 4, name: "Трамп Дональд Фредович" },
+    { id: 5, name: "Путин Владимир Владимирович" },
+    { id: 6, name: "Тупенко Дятел Петрович" },
+    { id: 7, name: "Долболобов Сергей Иванович" },
+    { id: 8, name: "Чзооуке Петр Петрович" },
+    { id: 9, name: "Шиалвуоы Иван Иванович" },
+    { id: 10, name: "Ярпуклоипд Петр Петрович" },
+    { id: 11, name: "Залу Иван Иванович" },
+    { id: 12, name: "Цваплоитловка Петр Петрович" },
+    { id: 13, name: "Щаьывкоь Иван Иванович" },
+    { id: 14, name: "Щавпвкуце Петр Петрович" },
+    { id: 15, name: "Иванов Хой Панкович" },
+    { id: 16, name: "Идиотов Идиот Идиотович" },
   ];
 
   const documents = [
@@ -30,6 +50,66 @@ const AllCategories: React.FC = () => {
     "МИФНС",
     "СУД",
   ];
+
+  // Фильтрация клиентов по поисковому запросу
+  const filteredClients = clients.filter((client) =>
+    client.name.toLowerCase().includes(searchTerm.toLowerCase()),
+  );
+
+  // Отображаемые клиенты (первые visibleCount)
+  const displayedClients = filteredClients.slice(0, visibleCount);
+  const hasMore = visibleCount < filteredClients.length;
+
+  // Обработчик скролла для подгрузки следующих 10
+  const handleScroll = useCallback(
+    (e: React.UIEvent<HTMLDivElement>) => {
+      const target = e.target as HTMLDivElement;
+      const bottom =
+        target.scrollHeight - target.scrollTop <= target.clientHeight + 10;
+
+      if (bottom && hasMore) {
+        setVisibleCount((prev) => Math.min(prev + 10, filteredClients.length));
+      }
+    },
+    [hasMore, filteredClients.length],
+  );
+
+  // Сброс видимого количества при изменении поиска
+  useEffect(() => {
+    setVisibleCount(10);
+  }, [searchTerm]);
+
+  // Закрытие дропдауна при клике вне
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        dropdownRef.current &&
+        !dropdownRef.current.contains(event.target as Node)
+      ) {
+        setIsDropdownOpen(false);
+        setSearchTerm("");
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  // Фокус на поиск при открытии дропдауна
+  useEffect(() => {
+    if (isDropdownOpen && searchInputRef.current) {
+      searchInputRef.current.focus();
+    }
+  }, [isDropdownOpen]);
+
+  const handleSelectClient = (clientName: string) => {
+    setSelectedClient(clientName);
+    setIsDropdownOpen(false);
+    setSearchTerm("");
+    if (error === "Добавьте клиента") {
+      setError("");
+    }
+  };
 
   const handleDocToggle = (doc: string) => {
     setSelectedDocs((prev) =>
@@ -58,7 +138,7 @@ const AllCategories: React.FC = () => {
       <div className="max-w-5xl mx-auto px-4 py-8">
         <div
           onClick={() => navigate("/")}
-          className="text-xl mb-2 cursor-pointer flex items-center"
+          className="text-xl mb-2 cursor-pointer flex items-center hover:text-blue-600 transition-colors"
         >
           <svg
             className="w-6 h-6 rotate-180"
@@ -81,23 +161,89 @@ const AllCategories: React.FC = () => {
           </h1>
 
           <div className="space-y-6">
-            {/* Выбор клиента */}
+            {/* Выбор клиента с кастомным дропдауном */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Выберите клиента
               </label>
-              <select
-                value={selectedClient}
-                onChange={(e) => setSelectedClient(e.target.value)}
-                className="w-full md:w-96 px-4 py-2 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-300"
-              >
-                <option value="">Выберите клиента...</option>
-                {clients.map((client) => (
-                  <option key={client.id} value={client.name}>
-                    {client.name}
-                  </option>
-                ))}
-              </select>
+              <div className="relative" ref={dropdownRef}>
+                {/* Кнопка дропдауна */}
+                <div
+                  onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                  className="w-full md:w-96 px-4 py-2 rounded-xl border border-gray-200 bg-white cursor-pointer flex justify-between items-center hover:border-blue-300 transition-colors"
+                >
+                  <span
+                    className={
+                      selectedClient ? "text-gray-800" : "text-gray-400"
+                    }
+                  >
+                    {selectedClient || "Выберите клиента..."}
+                  </span>
+                  <svg
+                    className={`w-5 h-5 transition-transform ${isDropdownOpen ? "rotate-180" : ""}`}
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M19 9l-7 7-7-7"
+                    />
+                  </svg>
+                </div>
+
+                {/* Выпадающий список */}
+                {isDropdownOpen && (
+                  <div className="absolute z-10 w-full md:w-96 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
+                    {/* Поле поиска */}
+                    <div className="p-2 border-b border-gray-200">
+                      <input
+                        ref={searchInputRef}
+                        type="text"
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        placeholder="Поиск по фамилии..."
+                        className="w-full px-3 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-300"
+                      />
+                    </div>
+
+                    {/* Список клиентов с виртуальной прокруткой */}
+                    <div
+                      className="max-h-80 overflow-y-auto"
+                      onScroll={handleScroll}
+                    >
+                      {displayedClients.length > 0 ? (
+                        <>
+                          {displayedClients.map((client) => (
+                            <div
+                              key={client.id}
+                              onClick={() => handleSelectClient(client.name)}
+                              className="px-4 py-2 hover:bg-blue-50 cursor-pointer transition-colors border-b border-gray-100 last:border-b-0"
+                            >
+                              {client.name}
+                            </div>
+                          ))}
+                          {hasMore && (
+                            <div className="px-4 py-2 text-center text-gray-400 text-sm">
+                              Прокрутите для загрузки еще...
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        <div className="px-4 py-8 text-center text-gray-400">
+                          Клиенты не найдены
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+              <p className="text-xs text-gray-400 mt-1">
+                Всего клиентов: {clients.length}. Начните вводить фамилию для
+                поиска
+              </p>
             </div>
 
             {/* Список документов с чекбоксами */}
