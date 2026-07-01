@@ -6,21 +6,25 @@ const Modal: React.FC = () => {
   const [login, setLogin] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+    setLoading(true);
 
-    const result = store.login(login, password);
+    const result = await store.login(login, password);
 
     if (result.success) {
       store.closeModal("login");
       setLogin("");
       setPassword("");
       setError("");
+      // Можно добавить уведомление об успешном входе
     } else {
       setError(result.message);
     }
+    setLoading(false);
   };
 
   const handleClose = () => {
@@ -28,6 +32,7 @@ const Modal: React.FC = () => {
     setLogin("");
     setPassword("");
     setError("");
+    setLoading(false);
   };
 
   if (!store.modals.login) return null;
@@ -61,18 +66,18 @@ const Modal: React.FC = () => {
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Логин
+              Email
             </label>
             <input
-              type="text"
-              placeholder="jurist_test"
+              type="email"
+              placeholder="example@mail.ru"
               value={login}
               onChange={(e) => setLogin(e.target.value)}
-              className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-300"
+              required
+              disabled={loading}
+              className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-300 disabled:opacity-50"
             />
-            <p className="text-xs text-gray-400 mt-1">
-              Тестовый логин: jurist_test
-            </p>
+            <p className="text-xs text-gray-400 mt-1">Введите ваш email</p>
           </div>
 
           <div>
@@ -81,14 +86,13 @@ const Modal: React.FC = () => {
             </label>
             <input
               type="password"
-              placeholder="qwerty123"
+              placeholder="********"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-300"
+              required
+              disabled={loading}
+              className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-300 disabled:opacity-50"
             />
-            <p className="text-xs text-gray-400 mt-1">
-              Тестовый пароль: qwerty123
-            </p>
           </div>
 
           {error && (
@@ -99,9 +103,10 @@ const Modal: React.FC = () => {
 
           <button
             type="submit"
-            className="w-full py-3 rounded-full bg-blue-500 hover:bg-blue-600 text-white font-medium transition-colors"
+            disabled={loading}
+            className="w-full py-3 rounded-full bg-blue-500 hover:bg-blue-600 disabled:bg-blue-300 text-white font-medium transition-colors"
           >
-            Войти
+            {loading ? "Вход..." : "Войти"}
           </button>
 
           <div className="text-center">

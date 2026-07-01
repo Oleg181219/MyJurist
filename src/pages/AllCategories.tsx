@@ -3,6 +3,7 @@ import { observer } from "mobx-react-lite";
 import Header from "../components/Header";
 import Modal from "../components/Modal";
 import { useNavigate } from "react-router-dom";
+import store from "../store/store";
 
 const AllCategories: React.FC = () => {
   const navigate = useNavigate();
@@ -64,9 +65,24 @@ const AllCategories: React.FC = () => {
 
     try {
       const apiUrl = import.meta.env.VITE_API_URL;
-      const response = await fetch(`${apiUrl}/api/documents/getClients`);
+      const token = store.getAuthHeader();
+
+      if (!token) {
+        throw new Error("Токен авторизации не найден");
+      }
+
+      const response = await fetch(`${apiUrl}/api/documents/getClients`, {
+        method: "GET",
+        headers: {
+          Authorization: token,
+          "Content-Type": "application/json",
+        },
+      });
 
       if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error("Сессия истекла. Пожалуйста, войдите заново.");
+        }
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
@@ -74,7 +90,6 @@ const AllCategories: React.FC = () => {
 
       // Проверяем, что данные - это массив с правильной структурой
       if (Array.isArray(data) && data.length > 0) {
-        // Предполагаем, что сервер возвращает массив объектов с полями id и name
         const formattedClients = data.map((client: any) => ({
           id: client.id || client.clientId || client.userId || Math.random(),
           name:
@@ -83,7 +98,6 @@ const AllCategories: React.FC = () => {
         setClients(formattedClients);
         setUseTestClients(false);
       } else {
-        // Если данные не в ожидаемом формате или пустые
         console.warn("Получены некорректные данные от сервера:", data);
         setUseTestClients(true);
         setApiError(
@@ -92,8 +106,10 @@ const AllCategories: React.FC = () => {
       }
     } catch (error) {
       console.error("Ошибка при загрузке клиентов:", error);
+      const errorMessage =
+        error instanceof Error ? error.message : "Неизвестная ошибка";
       setApiError(
-        "Не удалось загрузить список клиентов с сервера. Используем тестовых клиентов.",
+        `Не удалось загрузить список клиентов: ${errorMessage}. Используем тестовых клиентов.`,
       );
       setUseTestClients(true);
     } finally {
@@ -103,6 +119,11 @@ const AllCategories: React.FC = () => {
 
   // Загрузка клиентов при монтировании компонента
   useEffect(() => {
+    // Проверяем авторизацию
+    if (!store.user) {
+      store.openModal("login");
+      return;
+    }
     fetchClients();
   }, []);
 
@@ -362,7 +383,7 @@ const AllCategories: React.FC = () => {
                   onClick={handleSubmit}
                   className="w-full py-2 rounded-full bg-blue-500 hover:bg-blue-600 text-white font-medium text-lg transition-colors"
                 >
-                  Создать и получить
+                  Создать и отправить
                 </button>
               </div>
             )}
