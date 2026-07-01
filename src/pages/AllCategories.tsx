@@ -281,7 +281,7 @@ const AllCategories: React.FC = () => {
               onClick={handleSubmit}
               className="w-full py-2 rounded-full bg-blue-500 hover:bg-blue-600 text-white font-medium text-lg transition-colors"
             >
-              Создать и отправить
+              Создать и получить
             </button>
           </div>
         </div>
