@@ -10,13 +10,19 @@ interface FormErrors {
   firstName?: string;
   patronymic?: string;
   birthDate?: string;
+  birthPlace?: string;
   passportSeries?: string;
   passportNumber?: string;
   inn?: string;
   snils?: string;
   address?: string;
+  region?: string;
   phone?: string;
   email?: string;
+  courtName?: string;
+  decisionDate?: string;
+  caseNumber?: string;
+  fullNameGenitive?: string;
 }
 
 const ClientCard: React.FC = () => {
@@ -28,13 +34,20 @@ const ClientCard: React.FC = () => {
     passportSeries: "",
     passportNumber: "",
     birthDate: "",
+    birthPlace: "",
     inn: "",
     snils: "",
     address: "",
+    region: "",
     phone: "",
     email: "",
+    courtName: "",
+    decisionDate: "",
+    caseNumber: "",
+    fullNameGenitive: "",
   });
   const [errors, setErrors] = useState<FormErrors>({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Русские названия месяцев и дней недели
   const getRussianDateString = (dateString: string) => {
@@ -71,6 +84,115 @@ const ClientCard: React.FC = () => {
 
     return `${day} ${month} ${year} года, ${weekday}`;
   };
+
+  // Генерация короткого ФИО
+  const generateShortName = (
+    lastName: string,
+    firstName: string,
+    patronymic: string,
+  ) => {
+    if (!lastName || !firstName) return "";
+    const shortFirstName = firstName.charAt(0) + ".";
+    const shortPatronymic = patronymic ? patronymic.charAt(0) + "." : "";
+    return `${lastName} ${shortFirstName}${shortPatronymic}`;
+  };
+
+  // Генерация родительного падежа (упрощенная версия)
+  const generateGenitiveCase = (
+    lastName: string,
+    firstName: string,
+    patronymic: string,
+  ) => {
+    if (!lastName || !firstName) return "";
+
+    // Упрощенное склонение фамилий (для демонстрации)
+    let genitiveLastName = lastName;
+    if (
+      lastName.endsWith("ов") ||
+      lastName.endsWith("ев") ||
+      lastName.endsWith("ин")
+    ) {
+      genitiveLastName = lastName + "а";
+    } else if (lastName.endsWith("ий")) {
+      genitiveLastName = lastName.slice(0, -2) + "его";
+    } else if (lastName.endsWith("ой")) {
+      genitiveLastName = lastName.slice(0, -2) + "ого";
+    } else if (lastName.endsWith("а") || lastName.endsWith("я")) {
+      genitiveLastName = lastName.slice(0, -1) + "ы";
+    } else {
+      genitiveLastName = lastName + "а";
+    }
+
+    // Упрощенное склонение имени
+    let genitiveFirstName = firstName;
+    if (firstName.endsWith("й")) {
+      genitiveFirstName = firstName.slice(0, -1) + "я";
+    } else if (firstName.endsWith("а")) {
+      genitiveFirstName = firstName.slice(0, -1) + "ы";
+    } else if (firstName.endsWith("я")) {
+      genitiveFirstName = firstName.slice(0, -1) + "и";
+    } else {
+      genitiveFirstName = firstName + "а";
+    }
+
+    // Упрощенное склонение отчества
+    let genitivePatronymic = patronymic;
+    if (patronymic) {
+      if (patronymic.endsWith("ич")) {
+        genitivePatronymic = patronymic + "а";
+      } else if (patronymic.endsWith("на")) {
+        genitivePatronymic = patronymic.slice(0, -1) + "ы";
+      } else {
+        genitivePatronymic = patronymic + "а";
+      }
+    }
+
+    return `${genitiveLastName} ${genitiveFirstName} ${genitivePatronymic}`.trim();
+  };
+
+  // Генерация короткого родительного падежа
+  const generateShortGenitive = (
+    lastName: string,
+    firstName: string,
+    patronymic: string,
+  ) => {
+    if (!lastName || !firstName) return "";
+    const genitiveFull = generateGenitiveCase(lastName, firstName, patronymic);
+    const parts = genitiveFull.split(" ");
+    if (parts.length >= 2) {
+      const shortFirstName = parts[1] ? parts[1].charAt(0) + "." : "";
+      const shortPatronymic = parts[2] ? parts[2].charAt(0) + "." : "";
+      return `${parts[0]} ${shortFirstName}${shortPatronymic}`.trim();
+    }
+    return genitiveFull;
+  };
+
+  // Обновление полей при изменении ФИО
+  React.useEffect(() => {
+    if (formData.lastName && formData.firstName) {
+      const fullNameGenitive = generateGenitiveCase(
+        formData.lastName,
+        formData.firstName,
+        formData.patronymic,
+      );
+
+      // Обновляем родительный падеж только если поле пустое или было сгенерировано автоматически
+      if (
+        !formData.fullNameGenitive ||
+        formData.fullNameGenitive ===
+          generateGenitiveCase(
+            formData.lastName,
+            formData.firstName,
+            formData.patronymic,
+          )
+      ) {
+        setFormData((prev) => ({
+          ...prev,
+          fullNameGenitive: fullNameGenitive,
+        }));
+      }
+    }
+  }, [formData.lastName, formData.firstName, formData.patronymic]);
 
   // Проверка кириллицы
   const validateCyrillic = (
@@ -152,6 +274,9 @@ const ClientCard: React.FC = () => {
     if (name === "inn") {
       newValue = value.replace(/\D/g, "").slice(0, 12);
     }
+    if (name === "region") {
+      newValue = value.replace(/\D/g, "").slice(0, 2);
+    }
 
     setFormData({
       ...formData,
@@ -168,6 +293,11 @@ const ClientCard: React.FC = () => {
         break;
       case "patronymic":
         error = validateCyrillic(newValue, "Отчество", false);
+        break;
+      case "birthPlace":
+        if (!newValue) {
+          error = "Место рождения обязательно для заполнения";
+        }
         break;
       case "passportSeries":
         if (newValue && newValue.length !== 4) {
@@ -196,6 +326,15 @@ const ClientCard: React.FC = () => {
           error = null;
         }
         break;
+      case "region":
+        if (newValue && newValue.length !== 2) {
+          error = "Регион должен содержать 2 цифры";
+        } else if (newValue && !/^\d+$/.test(newValue)) {
+          error = "Регион должен содержать только цифры";
+        } else {
+          error = null;
+        }
+        break;
       case "address":
         error = validateAddress(newValue);
         break;
@@ -220,6 +359,9 @@ const ClientCard: React.FC = () => {
       validateCyrillic(formData.firstName, "Имя", true) || undefined;
     newErrors.patronymic =
       validateCyrillic(formData.patronymic, "Отчество", false) || undefined;
+    newErrors.birthPlace = !formData.birthPlace
+      ? "Место рождения обязательно для заполнения"
+      : undefined;
 
     if (!formData.birthDate) {
       newErrors.birthDate = "Дата рождения обязательна для заполнения";
@@ -249,27 +391,112 @@ const ClientCard: React.FC = () => {
       newErrors.inn = "ИНН должен содержать только цифры";
     }
 
+    if (formData.region && formData.region.length !== 2) {
+      newErrors.region = "Регион должен содержать 2 цифры";
+    } else if (formData.region && !/^\d+$/.test(formData.region)) {
+      newErrors.region = "Регион должен содержать только цифры";
+    }
+
     newErrors.address = validateAddress(formData.address) || undefined;
     newErrors.phone = validatePhone(formData.phone) || undefined;
     newErrors.email = validateEmail(formData.email) || undefined;
+
+    if (!formData.courtName) {
+      newErrors.courtName = "Дело суда обязательно для заполнения";
+    }
+
+    if (!formData.decisionDate) {
+      newErrors.decisionDate = "Дата суда обязательна для заполнения";
+    }
+
+    if (!formData.caseNumber) {
+      newErrors.caseNumber = "Номер дела обязателен для заполнения";
+    }
+
+    if (!formData.fullNameGenitive) {
+      newErrors.fullNameGenitive =
+        "ФИО в родительном падеже обязательно для заполнения";
+    }
 
     setErrors(newErrors);
     return Object.values(newErrors).every((error) => !error);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!store.user) {
       store.openModal("login");
       return;
     }
 
-    if (validateForm()) {
-      console.log("Данные клиента:", formData);
+    if (!validateForm()) {
+      alert("Пожалуйста, исправьте ошибки в форме");
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    try {
+      const fullName =
+        `${formData.lastName} ${formData.firstName} ${formData.patronymic}`.trim();
+      const fullNameShort = generateShortName(
+        formData.lastName,
+        formData.firstName,
+        formData.patronymic,
+      );
+      const fullNameShortGenitive = generateShortGenitive(
+        formData.lastName,
+        formData.firstName,
+        formData.patronymic,
+      );
+
+      const requestData = {
+        fullName: fullName,
+        fullNameShort: fullNameShort,
+        fullNameGenitive: formData.fullNameGenitive,
+        fullNameShortGenitive: fullNameShortGenitive,
+        birthDate: formData.birthDate,
+        birthPlace: formData.birthPlace,
+        inn: formData.inn || undefined,
+        snils: formData.snils || undefined,
+        address: formData.address,
+        region: formData.region || undefined,
+        courtName: formData.courtName,
+        decisionDate: formData.decisionDate,
+        caseNumber: formData.caseNumber,
+      };
+
+      console.log("Отправляемые данные:", requestData);
+
+      const apiUrl = import.meta.env.VITE_API_URL;
+      const token = store.getAuthHeader();
+
+      const response = await fetch(`${apiUrl}/api/auth/register/client`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: token || "",
+        },
+        body: JSON.stringify(requestData),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Ошибка сервера: ${response.status} - ${errorText}`);
+      }
+
+      const result = await response.json();
+      console.log("Ответ сервера:", result);
+
       alert("Клиент успешно добавлен!");
       navigate("/");
-    } else {
-      alert("Пожалуйста, исправьте ошибки в форме");
+    } catch (error) {
+      console.error("Ошибка при сохранении клиента:", error);
+      alert(
+        `Ошибка при сохранении клиента: ${error instanceof Error ? error.message : "Неизвестная ошибка"}`,
+      );
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -387,6 +614,28 @@ const ClientCard: React.FC = () => {
                 )}
               </div>
 
+              {/* Место рождения */}
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Место рождения *
+                </label>
+                <input
+                  type="text"
+                  name="birthPlace"
+                  value={formData.birthPlace}
+                  onChange={handleChange}
+                  placeholder="Ростовская область, г. Новочеркасск"
+                  className={`w-full px-4 py-2 rounded-xl border ${
+                    errors.birthPlace ? "border-red-500" : "border-gray-200"
+                  } focus:outline-none focus:ring-2 focus:ring-blue-300`}
+                />
+                {errors.birthPlace && (
+                  <p className="text-red-500 text-xs mt-1">
+                    {errors.birthPlace}
+                  </p>
+                )}
+              </div>
+
               {/* Серия паспорта */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -469,6 +718,27 @@ const ClientCard: React.FC = () => {
                 />
               </div>
 
+              {/* Регион */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Регион
+                </label>
+                <input
+                  type="text"
+                  name="region"
+                  value={formData.region}
+                  onChange={handleChange}
+                  placeholder="61"
+                  maxLength={2}
+                  className={`w-full px-4 py-2 rounded-xl border ${
+                    errors.region ? "border-red-500" : "border-gray-200"
+                  } focus:outline-none focus:ring-2 focus:ring-blue-300`}
+                />
+                {errors.region && (
+                  <p className="text-red-500 text-xs mt-1">{errors.region}</p>
+                )}
+              </div>
+
               {/* Адрес */}
               <div className="md:col-span-2">
                 <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -479,7 +749,7 @@ const ClientCard: React.FC = () => {
                   name="address"
                   value={formData.address}
                   onChange={handleChange}
-                  placeholder="г. Москва, ул. Примерная, д. 1, кв. 1"
+                  placeholder="346400, Ростовская область, г.Новочеркасск, сп. Красный, д. 6"
                   className={`w-full px-4 py-2 rounded-xl border ${
                     errors.address ? "border-red-500" : "border-gray-200"
                   } focus:outline-none focus:ring-2 focus:ring-blue-300`}
@@ -528,14 +798,113 @@ const ClientCard: React.FC = () => {
                   <p className="text-red-500 text-xs mt-1">{errors.email}</p>
                 )}
               </div>
+
+              {/* Дело суда */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Дело суда *
+                </label>
+                <input
+                  type="text"
+                  name="courtName"
+                  value={formData.courtName}
+                  onChange={handleChange}
+                  placeholder="Арбитражного суда Ростовской области"
+                  className={`w-full px-4 py-2 rounded-xl border ${
+                    errors.courtName ? "border-red-500" : "border-gray-200"
+                  } focus:outline-none focus:ring-2 focus:ring-blue-300`}
+                />
+                {errors.courtName && (
+                  <p className="text-red-500 text-xs mt-1">
+                    {errors.courtName}
+                  </p>
+                )}
+              </div>
+
+              {/* Дата суда */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Дата суда *
+                </label>
+                <input
+                  type="date"
+                  name="decisionDate"
+                  value={formData.decisionDate}
+                  onChange={handleChange}
+                  className={`w-full px-4 py-2 rounded-xl border ${
+                    errors.decisionDate ? "border-red-500" : "border-gray-200"
+                  } focus:outline-none focus:ring-2 focus:ring-blue-300`}
+                />
+                {formData.decisionDate && (
+                  <p className="text-gray-500 text-xs mt-1">
+                    {getRussianDateString(formData.decisionDate)}
+                  </p>
+                )}
+                {errors.decisionDate && (
+                  <p className="text-red-500 text-xs mt-1">
+                    {errors.decisionDate}
+                  </p>
+                )}
+              </div>
+
+              {/* Номер дела */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Номер дела *
+                </label>
+                <input
+                  type="text"
+                  name="caseNumber"
+                  value={formData.caseNumber}
+                  onChange={handleChange}
+                  placeholder="А53-10291/2023"
+                  className={`w-full px-4 py-2 rounded-xl border ${
+                    errors.caseNumber ? "border-red-500" : "border-gray-200"
+                  } focus:outline-none focus:ring-2 focus:ring-blue-300`}
+                />
+                {errors.caseNumber && (
+                  <p className="text-red-500 text-xs mt-1">
+                    {errors.caseNumber}
+                  </p>
+                )}
+              </div>
+
+              {/* ФИО родительный падеж */}
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  ФИО в родительном падеже *
+                </label>
+                <input
+                  type="text"
+                  name="fullNameGenitive"
+                  value={formData.fullNameGenitive}
+                  onChange={handleChange}
+                  placeholder="Подрезова Александра Александровича"
+                  className={`w-full px-4 py-2 rounded-xl border ${
+                    errors.fullNameGenitive
+                      ? "border-red-500"
+                      : "border-gray-200"
+                  } focus:outline-none focus:ring-2 focus:ring-blue-300`}
+                />
+                {errors.fullNameGenitive && (
+                  <p className="text-red-500 text-xs mt-1">
+                    {errors.fullNameGenitive}
+                  </p>
+                )}
+                <p className="text-xs text-gray-400 mt-1">
+                  Автоматически генерируется из ФИО, но может быть
+                  отредактировано вручную
+                </p>
+              </div>
             </div>
 
             <div className="flex gap-4 pt-4">
               <button
                 type="submit"
-                className="px-6 py-3 rounded-full bg-blue-500 hover:bg-blue-600 text-white font-medium transition-colors"
+                disabled={isSubmitting}
+                className="px-6 py-3 rounded-full bg-blue-500 hover:bg-blue-600 disabled:bg-blue-300 text-white font-medium transition-colors"
               >
-                Сохранить клиента
+                {isSubmitting ? "Сохранение..." : "Сохранить клиента"}
               </button>
               <button
                 type="button"
