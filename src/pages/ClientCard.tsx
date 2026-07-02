@@ -9,6 +9,7 @@ interface FormErrors {
   lastName?: string;
   firstName?: string;
   patronymic?: string;
+  fullNameGenitive?: string;
   birthDate?: string;
   birthPlace?: string;
   passportSeries?: string;
@@ -22,7 +23,6 @@ interface FormErrors {
   courtName?: string;
   decisionDate?: string;
   caseNumber?: string;
-  fullNameGenitive?: string;
 }
 
 const ClientCard: React.FC = () => {
@@ -31,6 +31,7 @@ const ClientCard: React.FC = () => {
     lastName: "",
     firstName: "",
     patronymic: "",
+    fullNameGenitive: "",
     passportSeries: "",
     passportNumber: "",
     birthDate: "",
@@ -44,7 +45,6 @@ const ClientCard: React.FC = () => {
     courtName: "",
     decisionDate: "",
     caseNumber: "",
-    fullNameGenitive: "",
   });
   const [errors, setErrors] = useState<FormErrors>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -105,7 +105,6 @@ const ClientCard: React.FC = () => {
   ) => {
     if (!lastName || !firstName) return "";
 
-    // Упрощенное склонение фамилий (для демонстрации)
     let genitiveLastName = lastName;
     if (
       lastName.endsWith("ов") ||
@@ -123,7 +122,6 @@ const ClientCard: React.FC = () => {
       genitiveLastName = lastName + "а";
     }
 
-    // Упрощенное склонение имени
     let genitiveFirstName = firstName;
     if (firstName.endsWith("й")) {
       genitiveFirstName = firstName.slice(0, -1) + "я";
@@ -135,7 +133,6 @@ const ClientCard: React.FC = () => {
       genitiveFirstName = firstName + "а";
     }
 
-    // Упрощенное склонение отчества
     let genitivePatronymic = patronymic;
     if (patronymic) {
       if (patronymic.endsWith("ич")) {
@@ -176,7 +173,6 @@ const ClientCard: React.FC = () => {
         formData.patronymic,
       );
 
-      // Обновляем родительный падеж только если поле пустое или было сгенерировано автоматически
       if (
         !formData.fullNameGenitive ||
         formData.fullNameGenitive ===
@@ -231,7 +227,7 @@ const ClientCard: React.FC = () => {
 
   // Проверка email
   const validateEmail = (value: string): string | null => {
-    if (!value) return null; // Email необязательный
+    if (!value) return null;
     const emailRegex =
       /^[a-zA-Z0-9][a-zA-Z0-9._%+-]*@[a-zA-Z0-9][a-zA-Z0-9.-]*\.[a-zA-Z]{2,}$/;
     if (!emailRegex.test(value)) {
@@ -259,12 +255,10 @@ const ClientCard: React.FC = () => {
     let newValue = value;
     let error: string | null = null;
 
-    // Применяем форматирование для телефона
     if (name === "phone") {
       newValue = formatPhoneNumber(value);
     }
 
-    // Применяем ограничения для числовых полей
     if (name === "passportSeries") {
       newValue = value.replace(/\D/g, "").slice(0, 4);
     }
@@ -283,7 +277,6 @@ const ClientCard: React.FC = () => {
       [name]: newValue,
     });
 
-    // Валидация поля
     switch (name) {
       case "lastName":
         error = validateCyrillic(newValue, "Фамилия", true);
@@ -293,6 +286,11 @@ const ClientCard: React.FC = () => {
         break;
       case "patronymic":
         error = validateCyrillic(newValue, "Отчество", false);
+        break;
+      case "fullNameGenitive":
+        if (!newValue) {
+          error = "ФИО в родительном падеже обязательно для заполнения";
+        }
         break;
       case "birthPlace":
         if (!newValue) {
@@ -349,7 +347,6 @@ const ClientCard: React.FC = () => {
     setErrors((prev) => ({ ...prev, [name]: error || undefined }));
   };
 
-  // Валидация всей формы перед отправкой
   const validateForm = (): boolean => {
     const newErrors: FormErrors = {};
 
@@ -359,6 +356,9 @@ const ClientCard: React.FC = () => {
       validateCyrillic(formData.firstName, "Имя", true) || undefined;
     newErrors.patronymic =
       validateCyrillic(formData.patronymic, "Отчество", false) || undefined;
+    newErrors.fullNameGenitive = !formData.fullNameGenitive
+      ? "ФИО в родительном падеже обязательно для заполнения"
+      : undefined;
     newErrors.birthPlace = !formData.birthPlace
       ? "Место рождения обязательно для заполнения"
       : undefined;
@@ -413,11 +413,6 @@ const ClientCard: React.FC = () => {
       newErrors.caseNumber = "Номер дела обязателен для заполнения";
     }
 
-    if (!formData.fullNameGenitive) {
-      newErrors.fullNameGenitive =
-        "ФИО в родительном падеже обязательно для заполнения";
-    }
-
     setErrors(newErrors);
     return Object.values(newErrors).every((error) => !error);
   };
@@ -466,8 +461,6 @@ const ClientCard: React.FC = () => {
         caseNumber: formData.caseNumber,
       };
 
-      console.log("Отправляемые данные:", requestData);
-
       const apiUrl = import.meta.env.VITE_API_URL;
       const token = store.getAuthHeader();
 
@@ -485,9 +478,7 @@ const ClientCard: React.FC = () => {
         throw new Error(`Ошибка сервера: ${response.status} - ${errorText}`);
       }
 
-      const result = await response.json();
-      console.log("Ответ сервера:", result);
-
+      // const result = await response.json();
       alert("Клиент успешно добавлен!");
       navigate("/");
     } catch (error) {
@@ -500,7 +491,6 @@ const ClientCard: React.FC = () => {
     }
   };
 
-  // Проверяем авторизацию при загрузке
   React.useEffect(() => {
     if (!store.user) {
       store.openModal("login");
@@ -590,6 +580,33 @@ const ClientCard: React.FC = () => {
                 )}
               </div>
 
+              {/* ФИО родительный падеж - перемещено вверх */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  ФИО в родительном падеже *
+                </label>
+                <input
+                  type="text"
+                  name="fullNameGenitive"
+                  value={formData.fullNameGenitive}
+                  onChange={handleChange}
+                  placeholder="Подрезова Александра Александровича"
+                  className={`w-full px-4 py-2 rounded-xl border ${
+                    errors.fullNameGenitive
+                      ? "border-red-500"
+                      : "border-gray-200"
+                  } focus:outline-none focus:ring-2 focus:ring-blue-300`}
+                />
+                {errors.fullNameGenitive && (
+                  <p className="text-red-500 text-xs mt-1">
+                    {errors.fullNameGenitive}
+                  </p>
+                )}
+                <p className="text-xs text-gray-400 mt-1">
+                  Автоматически генерируется из ФИО
+                </p>
+              </div>
+
               {/* Дата рождения */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -600,7 +617,9 @@ const ClientCard: React.FC = () => {
                   name="birthDate"
                   value={formData.birthDate}
                   onChange={handleChange}
-                  className="w-full px-4 py-2 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-300"
+                  className={`w-full px-4 py-2 rounded-xl border ${
+                    errors.birthDate ? "border-red-500" : "border-gray-200"
+                  } focus:outline-none focus:ring-2 focus:ring-blue-300`}
                 />
                 {formData.birthDate && (
                   <p className="text-gray-500 text-xs mt-1">
@@ -636,6 +655,7 @@ const ClientCard: React.FC = () => {
                 )}
               </div>
 
+              {/* ... остальные поля без изменений ... */}
               {/* Серия паспорта */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -867,34 +887,6 @@ const ClientCard: React.FC = () => {
                     {errors.caseNumber}
                   </p>
                 )}
-              </div>
-
-              {/* ФИО родительный падеж */}
-              <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  ФИО в родительном падеже *
-                </label>
-                <input
-                  type="text"
-                  name="fullNameGenitive"
-                  value={formData.fullNameGenitive}
-                  onChange={handleChange}
-                  placeholder="Подрезова Александра Александровича"
-                  className={`w-full px-4 py-2 rounded-xl border ${
-                    errors.fullNameGenitive
-                      ? "border-red-500"
-                      : "border-gray-200"
-                  } focus:outline-none focus:ring-2 focus:ring-blue-300`}
-                />
-                {errors.fullNameGenitive && (
-                  <p className="text-red-500 text-xs mt-1">
-                    {errors.fullNameGenitive}
-                  </p>
-                )}
-                <p className="text-xs text-gray-400 mt-1">
-                  Автоматически генерируется из ФИО, но может быть
-                  отредактировано вручную
-                </p>
               </div>
             </div>
 

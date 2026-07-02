@@ -5,43 +5,52 @@ import Modal from "../components/Modal";
 import { useNavigate } from "react-router-dom";
 import store from "../store/store";
 
+interface Client {
+  id: string;
+  ownerId: string;
+  fullName: string;
+  fullNameShort: string;
+  region: number;
+}
+
+interface CourtDecision {
+  id: string;
+  courtName: string;
+  decisionDate: string;
+  caseNumber: string;
+}
+
+interface Organization {
+  id: string;
+  name: string;
+  // другие поля, которые могут прийти
+}
+
+interface ApiResponse {
+  result: string;
+  clientSprDto: Client[];
+}
+
 const AllCategories: React.FC = () => {
   const navigate = useNavigate();
-  const [selectedClient, setSelectedClient] = useState("");
-  const [selectedClientId, setSelectedClientId] = useState<number | null>(null);
+  const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [selectedDocs, setSelectedDocs] = useState<string[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [clients, setClients] = useState<{ id: number; name: string }[]>([]);
-  const [useTestClients, setUseTestClients] = useState(false);
+  const [loadingDetails, setLoadingDetails] = useState(false);
+  const [clients, setClients] = useState<Client[]>([]);
   const [apiError, setApiError] = useState<string | null>(null);
 
-  // Состояния для кастомного выпадающего списка
+  // Данные по выбранному клиенту
+  const [courtDecisions, setCourtDecisions] = useState<CourtDecision[]>([]);
+  const [organizations, setOrganizations] = useState<Organization[]>([]);
+  const [detailsError, setDetailsError] = useState<string | null>(null);
+
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [visibleCount, setVisibleCount] = useState(10);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
-
-  // Тестовые клиенты (резервные)
-  const testClients = [
-    { id: 1, name: "Иванов Иван Иванович" },
-    { id: 2, name: "Петров Петр Петрович" },
-    { id: 3, name: "Сидоров Сидор Сидорович" },
-    { id: 4, name: "Трамп Дональд Фредович" },
-    { id: 5, name: "Путин Владимир Владимирович" },
-    { id: 6, name: "Тупенко Дятел Петрович" },
-    { id: 7, name: "Долболобов Сергей Иванович" },
-    { id: 8, name: "Чзооуке Петр Петрович" },
-    { id: 9, name: "Шиалвуоы Иван Иванович" },
-    { id: 10, name: "Ярпуклоипд Петр Петрович" },
-    { id: 11, name: "Залу Иван Иванович" },
-    { id: 12, name: "Цваплоитловка Петр Петрович" },
-    { id: 13, name: "Щаьывкоь Иван Иванович" },
-    { id: 14, name: "Щавпвкуце Петр Петрович" },
-    { id: 15, name: "Иванов Хой Панкович" },
-    { id: 16, name: "Идиотов Идиот Идиотович" },
-  ];
 
   const documents = [
     "ФССП",
@@ -86,40 +95,147 @@ const AllCategories: React.FC = () => {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
-      const data = await response.json();
+      const data: ApiResponse = await response.json();
 
-      // Проверяем, что данные - это массив с правильной структурой
-      if (Array.isArray(data) && data.length > 0) {
-        const formattedClients = data.map((client: any) => ({
-          id: client.id || client.clientId || client.userId || Math.random(),
-          name:
-            client.name || client.fullName || client.clientName || "Unknown",
-        }));
-        setClients(formattedClients);
-        setUseTestClients(false);
+      if (
+        data.result === "complete" &&
+        Array.isArray(data.clientSprDto) &&
+        data.clientSprDto.length > 0
+      ) {
+        setClients(data.clientSprDto);
+      } else if (
+        data.result === "complete" &&
+        Array.isArray(data.clientSprDto) &&
+        data.clientSprDto.length === 0
+      ) {
+        setApiError("Список клиентов пуст");
+        setClients([]);
       } else {
-        console.warn("Получены некорректные данные от сервера:", data);
-        setUseTestClients(true);
-        setApiError(
-          "Получены некорректные данные от сервера, используем тестовых клиентов",
-        );
+        setApiError("Получены некорректные данные от сервера");
+        setClients([]);
       }
     } catch (error) {
       console.error("Ошибка при загрузке клиентов:", error);
       const errorMessage =
         error instanceof Error ? error.message : "Неизвестная ошибка";
-      setApiError(
-        `Не удалось загрузить список клиентов: ${errorMessage}. Используем тестовых клиентов.`,
-      );
-      setUseTestClients(true);
+      setApiError(`Не удалось загрузить список клиентов: ${errorMessage}`);
+      setClients([]);
     } finally {
       setLoading(false);
     }
   };
 
+  // Загрузка деталей по выбранному клиенту
+  const fetchClientDetails = async (clientId: string, region: number) => {
+    setLoadingDetails(true);
+    setDetailsError(null);
+    setCourtDecisions([]);
+    setOrganizations([]);
+
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL;
+      const token = store.getAuthHeader();
+
+      if (!token) {
+        throw new Error("Токен авторизации не найден");
+      }
+
+      // Параллельные запросы
+      const [courtDecisionsResponse, organizationsResponse] = await Promise.all(
+        [
+          fetch(`${apiUrl}/api/documents/getCourtDecisions/${clientId}`, {
+            method: "GET",
+            headers: {
+              Authorization: token,
+              "Content-Type": "application/json",
+            },
+          }),
+          fetch(`${apiUrl}/api/documents/getOrganizations/${region}`, {
+            method: "GET",
+            headers: {
+              Authorization: token,
+              "Content-Type": "application/json",
+            },
+          }),
+        ],
+      );
+
+      // Обработка ответа по решениям суда
+      if (courtDecisionsResponse.ok) {
+        const courtData = await courtDecisionsResponse.json();
+        if (Array.isArray(courtData)) {
+          setCourtDecisions(courtData);
+        } else {
+          console.warn(
+            "Некорректный формат данных судебных решений:",
+            courtData,
+          );
+          setCourtDecisions([]);
+        }
+      } else {
+        if (courtDecisionsResponse.status === 403) {
+          setDetailsError(
+            "Нет доступа к данным судебных решений. Проверьте права доступа.",
+          );
+        } else if (courtDecisionsResponse.status === 404) {
+          setDetailsError("Судебные решения для этого клиента не найдены");
+        } else {
+          setDetailsError(
+            `Ошибка загрузки судебных решений: ${courtDecisionsResponse.status}`,
+          );
+        }
+        console.error(
+          "Ошибка загрузки судебных решений:",
+          courtDecisionsResponse.status,
+        );
+      }
+
+      // Обработка ответа по организациям
+      if (organizationsResponse.ok) {
+        const orgData = await organizationsResponse.json();
+        if (Array.isArray(orgData)) {
+          setOrganizations(orgData);
+        } else {
+          console.warn("Некорректный формат данных организаций:", orgData);
+          setOrganizations([]);
+        }
+      } else {
+        if (organizationsResponse.status === 403) {
+          setDetailsError((prev) =>
+            prev
+              ? `${prev}; Нет доступа к данным организаций`
+              : "Нет доступа к данным организаций",
+          );
+        } else if (organizationsResponse.status === 404) {
+          setDetailsError((prev) =>
+            prev
+              ? `${prev}; Организации для этого региона не найдены`
+              : "Организации для этого региона не найдены",
+          );
+        } else {
+          setDetailsError((prev) =>
+            prev
+              ? `${prev}; Ошибка загрузки организаций: ${organizationsResponse.status}`
+              : `Ошибка загрузки организаций: ${organizationsResponse.status}`,
+          );
+        }
+        console.error(
+          "Ошибка загрузки организаций:",
+          organizationsResponse.status,
+        );
+      }
+    } catch (error) {
+      console.error("Ошибка при загрузке деталей клиента:", error);
+      const errorMessage =
+        error instanceof Error ? error.message : "Неизвестная ошибка";
+      setDetailsError(`Ошибка загрузки данных: ${errorMessage}`);
+    } finally {
+      setLoadingDetails(false);
+    }
+  };
+
   // Загрузка клиентов при монтировании компонента
   useEffect(() => {
-    // Проверяем авторизацию
     if (!store.user) {
       store.openModal("login");
       return;
@@ -127,17 +243,14 @@ const AllCategories: React.FC = () => {
     fetchClients();
   }, []);
 
-  // Фильтрация клиентов по поисковому запросу
-  const currentClients = useTestClients ? testClients : clients;
-  const filteredClients = currentClients.filter((client) =>
-    client.name.toLowerCase().includes(searchTerm.toLowerCase()),
+  // Фильтрация клиентов по поисковому запросу (по полю fullName)
+  const filteredClients = clients.filter((client) =>
+    client.fullName.toLowerCase().includes(searchTerm.toLowerCase()),
   );
 
-  // Отображаемые клиенты (первые visibleCount)
   const displayedClients = filteredClients.slice(0, visibleCount);
   const hasMore = visibleCount < filteredClients.length;
 
-  // Обработчик скролла для подгрузки следующих 10
   const handleScroll = useCallback(
     (e: React.UIEvent<HTMLDivElement>) => {
       const target = e.target as HTMLDivElement;
@@ -151,12 +264,10 @@ const AllCategories: React.FC = () => {
     [hasMore, filteredClients.length],
   );
 
-  // Сброс видимого количества при изменении поиска
   useEffect(() => {
     setVisibleCount(10);
   }, [searchTerm]);
 
-  // Закрытие дропдауна при клике вне
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (
@@ -172,21 +283,21 @@ const AllCategories: React.FC = () => {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Фокус на поиск при открытии дропдауна
   useEffect(() => {
     if (isDropdownOpen && searchInputRef.current) {
       searchInputRef.current.focus();
     }
   }, [isDropdownOpen]);
 
-  const handleSelectClient = (clientName: string, clientId: number) => {
-    setSelectedClient(clientName);
-    setSelectedClientId(clientId);
+  const handleSelectClient = (client: Client) => {
+    setSelectedClient(client);
     setIsDropdownOpen(false);
     setSearchTerm("");
     if (error === "Добавьте клиента") {
       setError("");
     }
+    // Загружаем детали по выбранному клиенту
+    fetchClientDetails(client.id, client.region);
   };
 
   const handleDocToggle = (doc: string) => {
@@ -202,10 +313,14 @@ const AllCategories: React.FC = () => {
     }
     setError("");
     console.log("Клиент:", selectedClient);
-    console.log("ID клиента:", selectedClientId);
+    console.log("Судебные решения:", courtDecisions);
+    console.log("Организации:", organizations);
     console.log("Выбранные документы:", selectedDocs);
     alert(
-      `Запрос создан для ${selectedClient}\nДокументы: ${selectedDocs.join(", ") || "не выбраны"}`,
+      `Запрос создан для ${selectedClient.fullName}\n` +
+        `Судебных решений: ${courtDecisions.length}\n` +
+        `Организаций: ${organizations.length}\n` +
+        `Документы: ${selectedDocs.join(", ") || "не выбраны"}`,
     );
   };
 
@@ -246,7 +361,6 @@ const AllCategories: React.FC = () => {
                 Выберите клиента
               </label>
               <div className="relative" ref={dropdownRef}>
-                {/* Кнопка дропдауна */}
                 <div
                   onClick={() => !loading && setIsDropdownOpen(!isDropdownOpen)}
                   className={`w-full md:w-96 px-4 py-2 rounded-xl border border-gray-200 bg-white cursor-pointer flex justify-between items-center hover:border-blue-300 transition-colors ${
@@ -260,7 +374,7 @@ const AllCategories: React.FC = () => {
                   >
                     {loading
                       ? "Загрузка клиентов..."
-                      : selectedClient || "Выберите клиента..."}
+                      : selectedClient?.fullName || "Выберите клиента..."}
                   </span>
                   <svg
                     className={`w-5 h-5 transition-transform ${isDropdownOpen ? "rotate-180" : ""}`}
@@ -277,10 +391,8 @@ const AllCategories: React.FC = () => {
                   </svg>
                 </div>
 
-                {/* Выпадающий список */}
                 {isDropdownOpen && !loading && (
                   <div className="absolute z-10 w-full md:w-96 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
-                    {/* Поле поиска */}
                     <div className="p-2 border-b border-gray-200">
                       <input
                         ref={searchInputRef}
@@ -292,7 +404,6 @@ const AllCategories: React.FC = () => {
                       />
                     </div>
 
-                    {/* Список клиентов с виртуальной прокруткой */}
                     <div
                       className="max-h-80 overflow-y-auto"
                       onScroll={handleScroll}
@@ -302,12 +413,16 @@ const AllCategories: React.FC = () => {
                           {displayedClients.map((client) => (
                             <div
                               key={client.id}
-                              onClick={() =>
-                                handleSelectClient(client.name, client.id)
-                              }
+                              onClick={() => handleSelectClient(client)}
                               className="px-4 py-2 hover:bg-blue-50 cursor-pointer transition-colors border-b border-gray-100 last:border-b-0"
                             >
-                              {client.name}
+                              <div className="font-medium">
+                                {client.fullName}
+                              </div>
+                              <div className="text-xs text-gray-400 flex gap-3">
+                                <span>Регион: {client.region}</span>
+                                <span>ID: {client.id.slice(0, 8)}...</span>
+                              </div>
                             </div>
                           ))}
                           {hasMore && (
@@ -318,7 +433,9 @@ const AllCategories: React.FC = () => {
                         </>
                       ) : (
                         <div className="px-4 py-8 text-center text-gray-400">
-                          Клиенты не найдены
+                          {clients.length === 0
+                            ? "Клиенты не найдены"
+                            : "Клиенты не найдены"}
                         </div>
                       )}
                     </div>
@@ -326,7 +443,6 @@ const AllCategories: React.FC = () => {
                 )}
               </div>
 
-              {/* Информация о загрузке и ошибках */}
               <div className="mt-1">
                 {loading && (
                   <p className="text-xs text-blue-500">
@@ -336,14 +452,81 @@ const AllCategories: React.FC = () => {
                 {apiError && (
                   <p className="text-xs text-yellow-600">{apiError}</p>
                 )}
-                {!loading && !apiError && (
+                {!loading && !apiError && clients.length > 0 && (
                   <p className="text-xs text-gray-400">
-                    Всего клиентов: {currentClients.length}. Начните вводить
-                    фамилию для поиска
+                    Всего клиентов: {clients.length}. Начните вводить фамилию
+                    для поиска
                   </p>
+                )}
+                {!loading && !apiError && clients.length === 0 && (
+                  <p className="text-xs text-gray-400">Список клиентов пуст</p>
                 )}
               </div>
             </div>
+
+            {/* Информация о загруженных данных по клиенту */}
+            {selectedClient && (
+              <div className="space-y-4">
+                {loadingDetails && (
+                  <div className="text-center py-4">
+                    <p className="text-blue-500">
+                      Загрузка данных по клиенту...
+                    </p>
+                  </div>
+                )}
+
+                {detailsError && (
+                  <div className="bg-yellow-50 text-yellow-700 px-4 py-3 rounded-xl text-sm">
+                    {detailsError}
+                  </div>
+                )}
+
+                {!loadingDetails && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="bg-gray-50 rounded-xl p-4">
+                      <h3 className="font-medium text-gray-700 mb-2">
+                        Судебные решения
+                      </h3>
+                      <p className="text-2xl font-bold text-blue-600">
+                        {courtDecisions.length}
+                      </p>
+                      {courtDecisions.length > 0 && (
+                        <div className="mt-2 text-xs text-gray-500">
+                          {courtDecisions.slice(0, 2).map((decision, idx) => (
+                            <div key={idx} className="truncate">
+                              {decision.caseNumber} - {decision.courtName}
+                            </div>
+                          ))}
+                          {courtDecisions.length > 2 && (
+                            <div>+ еще {courtDecisions.length - 2}</div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                    <div className="bg-gray-50 rounded-xl p-4">
+                      <h3 className="font-medium text-gray-700 mb-2">
+                        Организации
+                      </h3>
+                      <p className="text-2xl font-bold text-green-600">
+                        {organizations.length}
+                      </p>
+                      {organizations.length > 0 && (
+                        <div className="mt-2 text-xs text-gray-500">
+                          {organizations.slice(0, 2).map((org, idx) => (
+                            <div key={idx} className="truncate">
+                              {org.name || "Организация"}
+                            </div>
+                          ))}
+                          {organizations.length > 2 && (
+                            <div>+ еще {organizations.length - 2}</div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Блок документов - показывается только когда выбран клиент */}
             {selectedClient && (
@@ -351,7 +534,7 @@ const AllCategories: React.FC = () => {
                 <div className="border-t border-gray-200 pt-6">
                   <label className="block text-sm font-medium text-gray-700 mb-3">
                     Выберите необходимые документы для{" "}
-                    <span className="font-bold">{selectedClient}</span>
+                    <span className="font-bold">{selectedClient.fullName}</span>
                   </label>
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                     {documents.map((doc) => (
@@ -371,25 +554,23 @@ const AllCategories: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Ошибка */}
                 {error && (
                   <div className="bg-red-50 text-red-600 px-4 py-3 rounded-xl">
                     {error}
                   </div>
                 )}
 
-                {/* Кнопка создания */}
                 <button
                   onClick={handleSubmit}
-                  className="w-full py-2 rounded-full bg-blue-500 hover:bg-blue-600 text-white font-medium text-lg transition-colors"
+                  disabled={loadingDetails}
+                  className="w-full py-2 rounded-full bg-blue-500 hover:bg-blue-600 disabled:bg-blue-300 text-white font-medium text-lg transition-colors"
                 >
                   Создать и отправить
                 </button>
               </div>
             )}
 
-            {/* Сообщение, если клиент не выбран */}
-            {!selectedClient && !loading && (
+            {!selectedClient && !loading && clients.length > 0 && (
               <div className="text-center py-8 text-gray-400 border-2 border-dashed border-gray-200 rounded-xl">
                 <svg
                   className="w-12 h-12 mx-auto mb-3 text-gray-300"
@@ -405,6 +586,25 @@ const AllCategories: React.FC = () => {
                   />
                 </svg>
                 <p>Выберите клиента, чтобы увидеть доступные документы</p>
+              </div>
+            )}
+
+            {!loading && clients.length === 0 && !apiError && (
+              <div className="text-center py-8 text-gray-400 border-2 border-dashed border-gray-200 rounded-xl">
+                <svg
+                  className="w-12 h-12 mx-auto mb-3 text-gray-300"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={1.5}
+                    d="M12 4v16m8-8H4"
+                  />
+                </svg>
+                <p>Список клиентов пуст. Добавьте первого клиента</p>
               </div>
             )}
           </div>
