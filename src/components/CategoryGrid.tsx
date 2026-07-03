@@ -110,7 +110,7 @@ const categories = [
     path: "/legal-support",
   },
   {
-    name: "Прочие",
+    name: "Прочие услуги",
     icon: (
       <svg
         width="55"
