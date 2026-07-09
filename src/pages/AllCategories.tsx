@@ -22,8 +22,8 @@ interface CourtDecision {
 
 interface Organization {
   id: string;
-  name: string;
-  // другие поля, которые могут прийти
+  orgName: string;
+  orgAddr: string;
 }
 
 interface ApiResponse {
@@ -31,10 +31,16 @@ interface ApiResponse {
   clientSprDto: Client[];
 }
 
+interface GenerateResponse {
+  success?: boolean;
+  message?: string;
+  data?: any;
+}
+
 const AllCategories: React.FC = () => {
   const navigate = useNavigate();
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
-  const [selectedDocs, setSelectedDocs] = useState<string[]>([]);
+  const [selectedOrgIds, setSelectedOrgIds] = useState<string[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [loadingDetails, setLoadingDetails] = useState(false);
@@ -46,26 +52,18 @@ const AllCategories: React.FC = () => {
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [detailsError, setDetailsError] = useState<string | null>(null);
 
+  // Состояния для генерации
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generateResult, setGenerateResult] = useState<GenerateResponse | null>(
+    null,
+  );
+  const [generateError, setGenerateError] = useState<string | null>(null);
+
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [visibleCount, setVisibleCount] = useState(10);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
-
-  const documents = [
-    "ФССП",
-    "Управление РосАвиации",
-    "ОСФР",
-    "МРЭО ГИБДД",
-    "МЧС (маломерные суда)",
-    "БТИ",
-    "РостовОблГосТехНадзор",
-    "РосИмущество",
-    "РосПатент",
-    "Управление Росгвардии",
-    "МИФНС",
-    "СУД",
-  ];
 
   // Загрузка клиентов с сервера
   const fetchClients = async () => {
@@ -131,6 +129,9 @@ const AllCategories: React.FC = () => {
     setDetailsError(null);
     setCourtDecisions([]);
     setOrganizations([]);
+    setSelectedOrgIds([]);
+    setGenerateResult(null);
+    setGenerateError(null);
 
     try {
       const apiUrl = import.meta.env.VITE_API_URL;
@@ -140,7 +141,6 @@ const AllCategories: React.FC = () => {
         throw new Error("Токен авторизации не найден");
       }
 
-      // Параллельные запросы
       const [courtDecisionsResponse, organizationsResponse] = await Promise.all(
         [
           fetch(`${apiUrl}/api/documents/getCourtDecisions/${clientId}`, {
@@ -160,7 +160,6 @@ const AllCategories: React.FC = () => {
         ],
       );
 
-      // Обработка ответа по решениям суда
       if (courtDecisionsResponse.ok) {
         const courtData = await courtDecisionsResponse.json();
         if (Array.isArray(courtData)) {
@@ -190,7 +189,6 @@ const AllCategories: React.FC = () => {
         );
       }
 
-      // Обработка ответа по организациям
       if (organizationsResponse.ok) {
         const orgData = await organizationsResponse.json();
         if (Array.isArray(orgData)) {
@@ -234,6 +232,82 @@ const AllCategories: React.FC = () => {
     }
   };
 
+  // Генерация запроса
+  const handleGenerate = async () => {
+    if (!selectedClient) {
+      setError("Добавьте клиента");
+      return;
+    }
+
+    if (selectedOrgIds.length === 0) {
+      setError("Выберите хотя бы одну организацию");
+      return;
+    }
+
+    setError("");
+    setIsGenerating(true);
+    setGenerateResult(null);
+    setGenerateError(null);
+
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL;
+      const token = store.getAuthHeader();
+
+      if (!token) {
+        throw new Error("Токен авторизации не найден");
+      }
+
+      // Получаем ID первого судебного решения (если есть)
+      const courtDecisionId =
+        courtDecisions.length > 0 ? courtDecisions[0].id : null;
+
+      const requestBody = {
+        clientId: selectedClient.id,
+        documentsIds: selectedOrgIds,
+        courtDecisions: courtDecisionId,
+      };
+
+      console.log("Отправляемый запрос:", requestBody);
+
+      const response = await fetch(`${apiUrl}/api/documents/generate`, {
+        method: "POST",
+        headers: {
+          Authorization: token,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(requestBody),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Ошибка сервера: ${response.status} - ${errorText}`);
+      }
+
+      const result = await response.json();
+      setGenerateResult(result);
+      console.log("Результат генерации:", result);
+    } catch (error) {
+      console.error("Ошибка при генерации:", error);
+      setGenerateError(
+        error instanceof Error ? error.message : "Неизвестная ошибка",
+      );
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  // Обработка выбора организации (чекбокс)
+  const handleOrgToggle = (orgId: string) => {
+    setSelectedOrgIds((prev) =>
+      prev.includes(orgId)
+        ? prev.filter((id) => id !== orgId)
+        : [...prev, orgId],
+    );
+    if (error === "Выберите хотя бы одну организацию") {
+      setError("");
+    }
+  };
+
   // Загрузка клиентов при монтировании компонента
   useEffect(() => {
     if (!store.user) {
@@ -243,7 +317,7 @@ const AllCategories: React.FC = () => {
     fetchClients();
   }, []);
 
-  // Фильтрация клиентов по поисковому запросу (по полю fullName)
+  // Фильтрация клиентов по поисковому запросу
   const filteredClients = clients.filter((client) =>
     client.fullName.toLowerCase().includes(searchTerm.toLowerCase()),
   );
@@ -268,6 +342,7 @@ const AllCategories: React.FC = () => {
     setVisibleCount(10);
   }, [searchTerm]);
 
+  // Закрытие дропдауна при клике вне
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (
@@ -293,35 +368,16 @@ const AllCategories: React.FC = () => {
     setSelectedClient(client);
     setIsDropdownOpen(false);
     setSearchTerm("");
-    if (error === "Добавьте клиента") {
+    setSelectedOrgIds([]);
+    setGenerateResult(null);
+    setGenerateError(null);
+    if (
+      error === "Добавьте клиента" ||
+      error === "Выберите хотя бы одну организацию"
+    ) {
       setError("");
     }
-    // Загружаем детали по выбранному клиенту
     fetchClientDetails(client.id, client.region);
-  };
-
-  const handleDocToggle = (doc: string) => {
-    setSelectedDocs((prev) =>
-      prev.includes(doc) ? prev.filter((d) => d !== doc) : [...prev, doc],
-    );
-  };
-
-  const handleSubmit = () => {
-    if (!selectedClient) {
-      setError("Добавьте клиента");
-      return;
-    }
-    setError("");
-    console.log("Клиент:", selectedClient);
-    console.log("Судебные решения:", courtDecisions);
-    console.log("Организации:", organizations);
-    console.log("Выбранные документы:", selectedDocs);
-    alert(
-      `Запрос создан для ${selectedClient.fullName}\n` +
-        `Судебных решений: ${courtDecisions.length}\n` +
-        `Организаций: ${organizations.length}\n` +
-        `Документы: ${selectedDocs.join(", ") || "не выбраны"}`,
-    );
   };
 
   return (
@@ -355,7 +411,7 @@ const AllCategories: React.FC = () => {
           </h1>
 
           <div className="space-y-6">
-            {/* Выбор клиента с кастомным дропдауном */}
+            {/* Выбор клиента */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Выберите клиента
@@ -433,9 +489,7 @@ const AllCategories: React.FC = () => {
                         </>
                       ) : (
                         <div className="px-4 py-8 text-center text-gray-400">
-                          {clients.length === 0
-                            ? "Клиенты не найдены"
-                            : "Клиенты не найдены"}
+                          Клиенты не найдены
                         </div>
                       )}
                     </div>
@@ -458,13 +512,10 @@ const AllCategories: React.FC = () => {
                     для поиска
                   </p>
                 )}
-                {!loading && !apiError && clients.length === 0 && (
-                  <p className="text-xs text-gray-400">Список клиентов пуст</p>
-                )}
               </div>
             </div>
 
-            {/* Информация о загруженных данных по клиенту */}
+            {/* Информация о загруженных данных */}
             {selectedClient && (
               <div className="space-y-4">
                 {loadingDetails && (
@@ -505,69 +556,106 @@ const AllCategories: React.FC = () => {
                     </div>
                     <div className="bg-gray-50 rounded-xl p-4">
                       <h3 className="font-medium text-gray-700 mb-2">
-                        Организации
+                        Доступные организации
                       </h3>
                       <p className="text-2xl font-bold text-green-600">
                         {organizations.length}
                       </p>
-                      {organizations.length > 0 && (
-                        <div className="mt-2 text-xs text-gray-500">
-                          {organizations.slice(0, 2).map((org, idx) => (
-                            <div key={idx} className="truncate">
-                              {org.name || "Организация"}
-                            </div>
-                          ))}
-                          {organizations.length > 2 && (
-                            <div>+ еще {organizations.length - 2}</div>
-                          )}
-                        </div>
-                      )}
+                      <p className="text-xs text-gray-500 mt-1">
+                        Выберите необходимые организации
+                      </p>
                     </div>
                   </div>
                 )}
               </div>
             )}
 
-            {/* Блок документов - показывается только когда выбран клиент */}
-            {selectedClient && (
-              <div className="space-y-6">
-                <div className="border-t border-gray-200 pt-6">
-                  <label className="block text-sm font-medium text-gray-700 mb-3">
-                    Выберите необходимые документы для{" "}
-                    <span className="font-bold">{selectedClient.fullName}</span>
-                  </label>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                    {documents.map((doc) => (
-                      <label
-                        key={doc}
-                        className="flex items-center space-x-3 p-3 bg-gray-50 rounded-xl cursor-pointer hover:bg-gray-100 transition-colors"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={selectedDocs.includes(doc)}
-                          onChange={() => handleDocToggle(doc)}
-                          className="w-5 h-5 text-blue-500 rounded focus:ring-blue-300"
-                        />
-                        <span className="text-gray-700">{doc}</span>
-                      </label>
-                    ))}
-                  </div>
+            {/* Список организаций с чекбоксами (в 2 колонки) */}
+            {selectedClient && organizations.length > 0 && !loadingDetails && (
+              <div className="space-y-3">
+                <label className="block text-sm font-medium text-gray-700">
+                  Выберите необходимые организации для{" "}
+                  <span className="font-bold">{selectedClient.fullName}</span>
+                </label>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {organizations.map((org) => (
+                    <label
+                      key={org.id}
+                      className="flex items-start space-x-3 p-3 bg-gray-50 rounded-xl cursor-pointer hover:bg-gray-100 transition-colors"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedOrgIds.includes(org.id)}
+                        onChange={() => handleOrgToggle(org.id)}
+                        className="w-5 h-5 text-blue-500 rounded focus:ring-blue-300 mt-0.5 shrink-0"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-medium text-gray-800 wrap-break-word">
+                          {org.orgName}
+                        </div>
+                        <div className="text-xs text-gray-500 mt-0.5 wrap-break-word">
+                          {org.orgAddr}
+                        </div>
+                      </div>
+                    </label>
+                  ))}
                 </div>
-
-                {error && (
-                  <div className="bg-red-50 text-red-600 px-4 py-3 rounded-xl">
-                    {error}
-                  </div>
+                {selectedOrgIds.length > 0 && (
+                  <p className="text-sm text-blue-600">
+                    Выбрано организаций: {selectedOrgIds.length}
+                  </p>
                 )}
-
-                <button
-                  onClick={handleSubmit}
-                  disabled={loadingDetails}
-                  className="w-full py-2 rounded-full bg-blue-500 hover:bg-blue-600 disabled:bg-blue-300 text-white font-medium text-lg transition-colors"
-                >
-                  Создать и отправить
-                </button>
               </div>
+            )}
+
+            {/* Сообщение, если организации не найдены */}
+            {selectedClient &&
+              organizations.length === 0 &&
+              !loadingDetails &&
+              !detailsError && (
+                <div className="text-center py-6 text-gray-400 border-2 border-dashed border-gray-200 rounded-xl">
+                  <p>Организации для этого региона не найдены</p>
+                </div>
+              )}
+
+            {error && (
+              <div className="bg-red-50 text-red-600 px-4 py-3 rounded-xl">
+                {error}
+              </div>
+            )}
+
+            {/* Результат генерации */}
+            {generateResult && (
+              <div className="bg-green-50 border border-green-200 rounded-xl p-4">
+                <h4 className="font-medium text-green-800 mb-2">
+                  ✅ Запрос успешно создан!
+                </h4>
+                <pre className="text-sm text-green-700 whitespace-pre-wrap">
+                  {JSON.stringify(generateResult, null, 2)}
+                </pre>
+              </div>
+            )}
+
+            {generateError && (
+              <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+                <h4 className="font-medium text-red-800 mb-2">
+                  ❌ Ошибка при создании запроса
+                </h4>
+                <p className="text-sm text-red-700">{generateError}</p>
+              </div>
+            )}
+
+            {/* Кнопка отправки */}
+            {selectedClient && (
+              <button
+                onClick={handleGenerate}
+                disabled={
+                  loadingDetails || isGenerating || organizations.length === 0
+                }
+                className="w-full py-2 rounded-full bg-blue-500 hover:bg-blue-600 disabled:bg-blue-300 text-white font-medium text-lg transition-colors"
+              >
+                {isGenerating ? "Отправка..." : "Создать и отправить"}
+              </button>
             )}
 
             {!selectedClient && !loading && clients.length > 0 && (
@@ -585,7 +673,7 @@ const AllCategories: React.FC = () => {
                     d="M12 4v16m8-8H4"
                   />
                 </svg>
-                <p>Выберите клиента, чтобы увидеть доступные документы</p>
+                <p>Выберите клиента, чтобы увидеть доступные организации</p>
               </div>
             )}
 
