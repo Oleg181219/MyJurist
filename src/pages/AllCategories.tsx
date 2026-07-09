@@ -31,12 +31,6 @@ interface ApiResponse {
   clientSprDto: Client[];
 }
 
-interface GenerateResponse {
-  success?: boolean;
-  message?: string;
-  data?: any;
-}
-
 const AllCategories: React.FC = () => {
   const navigate = useNavigate();
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
@@ -54,10 +48,8 @@ const AllCategories: React.FC = () => {
 
   // Состояния для генерации
   const [isGenerating, setIsGenerating] = useState(false);
-  const [generateResult, setGenerateResult] = useState<GenerateResponse | null>(
-    null,
-  );
   const [generateError, setGenerateError] = useState<string | null>(null);
+  const [downloadProgress, setDownloadProgress] = useState(0);
 
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
@@ -130,8 +122,8 @@ const AllCategories: React.FC = () => {
     setCourtDecisions([]);
     setOrganizations([]);
     setSelectedOrgIds([]);
-    setGenerateResult(null);
     setGenerateError(null);
+    setDownloadProgress(0);
 
     try {
       const apiUrl = import.meta.env.VITE_API_URL;
@@ -232,6 +224,35 @@ const AllCategories: React.FC = () => {
     }
   };
 
+  // Скачивание ZIP-архива
+  const downloadZip = async (
+    blob: Blob,
+    filename: string = "documents.zip",
+  ) => {
+    try {
+      // Создаем ссылку для скачивания
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+
+      // Добавляем ссылку в документ и кликаем по ней
+      document.body.appendChild(link);
+      link.click();
+
+      // Очищаем
+      setTimeout(() => {
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(url);
+      }, 100);
+
+      return true;
+    } catch (error) {
+      console.error("Ошибка при скачивании файла:", error);
+      throw new Error("Не удалось скачать файл");
+    }
+  };
+
   // Генерация запроса
   const handleGenerate = async () => {
     if (!selectedClient) {
@@ -246,8 +267,8 @@ const AllCategories: React.FC = () => {
 
     setError("");
     setIsGenerating(true);
-    setGenerateResult(null);
     setGenerateError(null);
+    setDownloadProgress(0);
 
     try {
       const apiUrl = import.meta.env.VITE_API_URL;
@@ -269,6 +290,7 @@ const AllCategories: React.FC = () => {
 
       console.log("Отправляемый запрос:", requestBody);
 
+      // Используем fetch без обработки JSON, так как ожидаем ZIP
       const response = await fetch(`${apiUrl}/api/documents/generate`, {
         method: "POST",
         headers: {
@@ -283,14 +305,49 @@ const AllCategories: React.FC = () => {
         throw new Error(`Ошибка сервера: ${response.status} - ${errorText}`);
       }
 
-      const result = await response.json();
-      setGenerateResult(result);
-      console.log("Результат генерации:", result);
+      // Проверяем, что ответ - ZIP архив
+      const contentType = response.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/zip")) {
+        // Если это не ZIP, возможно пришла ошибка в JSON
+        try {
+          const errorData = await response.json();
+          throw new Error(
+            errorData.message || "Получен некорректный ответ от сервера",
+          );
+        } catch {
+          throw new Error(
+            "Получен некорректный ответ от сервера (ожидался ZIP архив)",
+          );
+        }
+      }
+
+      // Получаем blob данных
+      const blob = await response.blob();
+
+      // Определяем имя файла из заголовка Content-Disposition
+      const contentDisposition = response.headers.get("content-disposition");
+      let filename = "documents.zip";
+      if (contentDisposition) {
+        const match = contentDisposition.match(
+          /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/,
+        );
+        if (match && match[1]) {
+          filename = match[1].replace(/['"]/g, "");
+        }
+      }
+
+      // Скачиваем архив
+      await downloadZip(blob, filename);
+
+      // Показываем уведомление об успехе
+      setDownloadProgress(100);
+      alert(`Файл ${filename} успешно скачан!`);
     } catch (error) {
       console.error("Ошибка при генерации:", error);
       setGenerateError(
         error instanceof Error ? error.message : "Неизвестная ошибка",
       );
+      setDownloadProgress(0);
     } finally {
       setIsGenerating(false);
     }
@@ -369,8 +426,8 @@ const AllCategories: React.FC = () => {
     setIsDropdownOpen(false);
     setSearchTerm("");
     setSelectedOrgIds([]);
-    setGenerateResult(null);
     setGenerateError(null);
+    setDownloadProgress(0);
     if (
       error === "Добавьте клиента" ||
       error === "Выберите хотя бы одну организацию"
@@ -477,7 +534,7 @@ const AllCategories: React.FC = () => {
                               </div>
                               <div className="text-xs text-gray-400 flex gap-3">
                                 <span>Регион: {client.region}</span>
-                                <span>ID: {client.id.slice(0, 8)}...</span>
+                                {/* <span>ID: {client.id.slice(0, 8)}...</span> */}
                               </div>
                             </div>
                           ))}
@@ -624,15 +681,41 @@ const AllCategories: React.FC = () => {
               </div>
             )}
 
-            {/* Результат генерации */}
-            {generateResult && (
-              <div className="bg-green-50 border border-green-200 rounded-xl p-4">
-                <h4 className="font-medium text-green-800 mb-2">
-                  ✅ Запрос успешно создан!
-                </h4>
-                <pre className="text-sm text-green-700 whitespace-pre-wrap">
-                  {JSON.stringify(generateResult, null, 2)}
-                </pre>
+            {/* Индикатор загрузки/прогресса */}
+            {isGenerating && (
+              <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+                <div className="flex items-center gap-3">
+                  <svg
+                    className="animate-spin h-5 w-5 text-blue-600"
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                  >
+                    <circle
+                      className="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      strokeWidth="4"
+                    ></circle>
+                    <path
+                      className="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                    ></path>
+                  </svg>
+                  <div>
+                    <p className="text-blue-700 font-medium">
+                      Генерация документов...
+                    </p>
+                    {downloadProgress > 0 && (
+                      <p className="text-xs text-blue-500">
+                        Загрузка: {downloadProgress}%
+                      </p>
+                    )}
+                  </div>
+                </div>
               </div>
             )}
 
@@ -654,7 +737,7 @@ const AllCategories: React.FC = () => {
                 }
                 className="w-full py-2 rounded-full bg-blue-500 hover:bg-blue-600 disabled:bg-blue-300 text-white font-medium text-lg transition-colors"
               >
-                {isGenerating ? "Отправка..." : "Создать и отправить"}
+                {isGenerating ? "Генерация..." : "Создать и отправить"}
               </button>
             )}
 
