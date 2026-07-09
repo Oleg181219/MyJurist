@@ -341,7 +341,6 @@ const AllCategories: React.FC = () => {
 
       // Показываем уведомление об успехе
       setDownloadProgress(100);
-      alert(`Файл ${filename} успешно скачан!`);
     } catch (error) {
       console.error("Ошибка при генерации:", error);
       setGenerateError(
